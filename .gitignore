@@ -3,3 +3,6 @@ node_modules/
 .env.*
 !.env.example
 *.log
+
+# Unencrypted local import source is never published.
+seed.json

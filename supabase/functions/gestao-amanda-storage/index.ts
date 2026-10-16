@@ -1,6 +1,9 @@
 import { operations, sessionUser } from "./ops.ts";
+import { createCodec, encryptedDatabase, migrateBatch } from "./crypto.mjs";
+import { requireDev } from "./access.mjs";
 import { scopedState, mergeOwnedState } from "./access.mjs";
-const EXPECTED_BRIDGE_SHA256="78d040a9a5efe242d0cb3f4dca7a01a77cd7164b2436a13a9eb493d90a0510b5";
+const EXPECTED_BRIDGE_SHA256="dc0220154112274140eb820770a04186c7d0084e79dbb6f76dc8a44eb74b4712";
+const EXPECTED_DATA_KEY_SHA256="546a3fceccdd4392d3e71595dc4c950299477b1a3a2da57241727b519ed17c27";
 const response=(status,data,headers={})=>new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json","Cache-Control":"no-store",...headers}});
 Deno.serve(async(req)=>{
  try{
@@ -12,17 +15,27 @@ Deno.serve(async(req)=>{
   const key=(modern?JSON.parse(modern).default:null)||Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if(!key)return response(503,{error:"Storage unavailable"});
   const headers={"apikey":key,"Content-Type":"application/json",...(key.startsWith("ey")?{"Authorization":"Bearer "+key}:{})};
-  const db=async(table,params={},method="GET",body)=>{
+  const raw=async(table,params={},method="GET",body)=>{
    const url=new URL(Deno.env.get("SUPABASE_URL")+"/rest/v1/"+table);
    for(const [k,v] of Object.entries(params))url.searchParams.set(k,String(v));
    const res=await fetch(url,{method:method==="UPSERT"?"POST":method,headers:{...headers,"Prefer":method==="UPSERT"?"return=representation,resolution=merge-duplicates":"return=representation"},...(body?{body:JSON.stringify(body)}:{})});
    if(!res.ok){const e=new Error(res.status===409?"Este nome de usuário já está em uso.":"Falha no armazenamento.");e.status=res.status===409?409:503;throw e}
    return res.status===204?[]:await res.json();
   };
+  const dataKey=req.headers.get("X-Amanda-Data-Key");
+  if(!dataKey)return response(503,{error:"Encryption unavailable"});
+  const keyDigest=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(dataKey)))).map(x=>x.toString(16).padStart(2,"0")).join("");
+  if(keyDigest!==EXPECTED_DATA_KEY_SHA256)return response(401,{error:"Unauthorized"});
+  const codec=await createCodec(dataKey),db=encryptedDatabase(raw,codec);
   if(new URL(req.url).pathname.endsWith("/ops")){
    if(req.method!=="POST")return response(405,{error:"Method not allowed"});
    const text=await req.text();if(text.length>6000000)return response(413,{error:"Payload too large"});
    let b;try{b=JSON.parse(text)}catch{return response(400,{error:"Invalid JSON"})}
+   if(b.action==='encryption_migrate'){
+    const actor=await sessionUser(b.input?.session_hash,db);requireDev(actor);
+    const offset=Number(b.input?.offset)||0;if(!Number.isInteger(offset)||offset<0)return response(400,{error:'Invalid offset'});
+    return response(200,await migrateBatch(raw,codec,b.input.table,offset));
+   }
    return response(200,await operations(b.action,b.input||{},db));
   }
   const user=await sessionUser(req.headers.get("X-Amanda-Session"),db);

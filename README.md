@@ -1,4 +1,4 @@
-# Gestão Equipe Amanda — v2
+# Gestão Equipe Amanda — v2.1
 
 Aplicação Node.js no Render, com banco PostgreSQL no Supabase. Interface cinza escuro, login, aprovação de acessos e controle por carteira.
 
@@ -47,6 +47,7 @@ A chave VAPID pública é fornecida ao navegador por exigência do protocolo; el
 - SUPABASE_EDGE_URL
 - SUPABASE_ANON_KEY (verificação JWT da plataforma, somente backend)
 - SUPABASE_BRIDGE_TOKEN (somente backend)
+- APP_DATA_ENCRYPTION_KEY (somente backend; preservar para recuperação)
 - APP_ORIGIN
 - VAPID_PUBLIC_KEY
 - VAPID_PRIVATE_KEY (somente backend)
@@ -60,3 +61,23 @@ O projeto Supabase é `mfigztzmdsjxqgawqfzx`, São Paulo. O antigo PostgreSQL gr
 `npm ci --ignore-scripts` instala as versões do lockfile. `npm test` cobre hashes, cookies, cadastro sem autopromoção, operações administrativas, sessões bloqueadas, isolamento, falsificação de proprietário, classificações, totais e ausência de credenciais nos arquivos públicos. `npm run check` verifica a sintaxe.
 
 Também foram testados login, sessão aprovada e revogação na função real. Os arquivos `lib/access.mjs` e `supabase/functions/gestao-amanda-storage/access.mjs` devem permanecer idênticos. A definição do banco está no histórico de migrações do projeto Supabase; a função implantada está versionada em `supabase/functions/gestao-amanda-storage`.
+
+## Criptografia adicional (v2.1)
+
+AES-256-GCM com nonce aleatório de 96 bits, tag de 128 bits e contexto de tabela/campo protege o estado financeiro, controles, dados pessoais, verificadores scrypt, mensagens, inscrições push, pedidos e detalhes de auditoria. HKDF-SHA256 deriva chaves distintas para criptografia e índices HMAC-SHA256. Usuários e endpoints são localizados por índices cegos, sem consultar seus valores legíveis. Senhas nunca são criptografadas de forma reversível: continuam como scrypt; somente o verificador recebe a camada adicional de criptografia. Sessões continuam armazenadas como hashes.
+
+`APP_DATA_ENCRYPTION_KEY` é uma chave independente de 32 bytes em hexadecimal, armazenada exclusivamente no ambiente privado do Render. O backend a encaminha por HTTPS à função, que verifica sua impressão digital depois de validar a credencial interna e antes de acessar dados. A função continua exigindo JWT da plataforma e autorização de sessão/perfil por operação. A chave não fica no banco, no frontend nem no Git.
+
+O arquivo inicial `seed.enc.json` também é criptografado. A fonte local `seed.json` não faz parte da versão publicada. Os testes usam dados fictícios em `tests/fixtures/seed.json`. As versões anteriores do repositório privado e backups anteriores não são reescritos; o armazenamento do provedor já possui criptografia de disco.
+
+IDs, datas, situação e perfis de autorização são metadados operacionais mantidos para consultas e controles de acesso; as conexões usam HTTPS e o banco permanece sem acesso público. Os dados autorizados são descriptografados no servidor para exibição: esta arquitetura não promete criptografia ponta a ponta nem oculta os resultados de quem está autorizado a vê-los no navegador.
+
+Preserve a chave no gerenciador de segredos e no procedimento de recuperação da organização. Não a regenere em deploys. A alteração exige uma migração explícita com a chave antiga; perder a chave impede recuperar os dados. O formato é versionado para permitir evolução futura.
+
+A migração administrativa `encryption_migrate` exige sessão aprovada de desenvolvedor, limita-se às tabelas permitidas, retorna somente contagens e usa condições de versão ao alterar dados existentes. Não concede acesso genérico ao banco.
+
+Os avisos Web Push usam o protocolo criptografado do navegador e não incluem o texto personalizado: mostram somente um lembrete genérico. O conteúdo completo é lido na caixa interna, após autenticação. Isso evita expor mensagens na tela bloqueada. Ao sair, os avisos exibidos e a inscrição deste dispositivo são removidos.
+
+## Interface v2.1
+
+Menus por assunto; rotina pessoal no painel; busca de abas com Ctrl/Cmd+K; busca por clínica mantendo o formulário; indicadores de rascunho; preservação dos demais rascunhos ao salvar uma clínica; filtros por contexto e atalhos Hoje/Ontem; menu lateral móvel; foco visível e opção de mostrar a senha.
