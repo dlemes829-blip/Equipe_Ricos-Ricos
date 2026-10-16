@@ -1,22 +1,62 @@
-# Gestão Equipe Amanda
+# Gestão Equipe Amanda — v2
 
-Aplicação Node.js com PostgreSQL. Sem login interno: todas as pessoas com acesso ao endereço podem consultar e alterar os registros.
+Aplicação Node.js no Render, com banco PostgreSQL no Supabase. Interface cinza escuro, login, aprovação de acessos e controle por carteira.
 
-## Render
+## Fluxo de acesso
 
-Envie package.json, server.mjs, page.html, seed.json e render.yaml para um repositório privado no GitHub. No Render, crie um Blueprint a partir desse repositório. O Blueprint configura a aplicação e o banco de dados. Confira as condições e a validade do plano gratuito de banco no painel do Render antes de confirmar.
+O usuário solicita acesso com nome, usuário e senha. A senha é transformada em hash scrypt com salt independente. O desenvolvimento aprova ou recusa, atribui a carteira e define os perfis. A senha original não é mostrada na administração.
 
-Variável obrigatória: DATABASE_URL. Porta: PORT fornecida pelo Render. Comando inicial: npm start.
+O usuário `daniel` está aprovado com os perfis Gerente e Desenvolvedor. A credencial inicial foi cadastrada diretamente no banco e não está no código.
 
-## Dados e limites desta versão
+- Gerente: dados detalhados apenas da carteira atribuída; lançamentos de avaliações, cadeiras, metas, mérito e controles.
+- Supervisora: acompanhamento e edição das carteiras, notificações e pedidos de melhorias.
+- Desenvolvedor: administração de usuários e perfis, bloqueios, presença recente, atividade e fila de desenvolvimento.
+- PRO: sinalizador administrável, com exportação de controles; não amplia a carteira nem concede funções de supervisão ou desenvolvimento.
+- Painel da equipe: todos os usuários aprovados veem somente o acompanhamento coletivo autorizado de metas, avaliações agregadas e fechamentos. O painel não libera os detalhes de mérito, clínicas ou controles das outras carteiras.
 
-- 72 unidades da supervisora Amanda no relatório Admin, com supervisora, gerente, cadeiras e efetivações.
-- Valores iniciais do relatório sem data confirmada; são identificados como base sem data.
-- Upload de relatório Admin em XLSX ou CSV, com prévia e confirmação.
-- Texto de avaliações reconhecido pelo código da unidade. Subtotais e linhas incompletas não são importados.
-- Antes/depois das 18h são retratos: quando houver ambos, o painel usa o de depois das 18h para não duplicar a contagem.
-- Metas por unidade ou supervisão, do dia ou mês. Metas históricas sem referência confirmada não são cadastradas automaticamente.
-- Dados compartilhados no PostgreSQL, proteção contra sobrescrita simultânea e backup JSON.
-- O histórico antigo das demais abas, regras de classificação Bronze/Prata/Ouro e cálculos de bonificação ainda não foram migrados.
-- A leitura XLSX exige navegador moderno com DecompressionStream deflate-raw; CSV é a alternativa.
-- Verificação feita: sintaxe JavaScript. Testes de interpretação de avaliações, totais, linhas incompletas, duplicidade entre retratos e CSV concluídos. Execução com banco depende da variável DATABASE_URL.
+## Planilha e módulos
+
+As 69 abas da planilha foram catalogadas em Operação, Campanhas, Financeiro, Gestão, Cadastros e Arquivo. Seis abas principais são controles integrados; as demais usam tabelas editáveis com os campos de referência da planilha.
+
+Os 2.876 registros históricos foram importados com acesso restrito à supervisão e desenvolvimento até a confirmação do responsável. O campo `suggested_manager` conserva uma sugestão de vínculo sem conceder acesso automaticamente. Ao editar um registro histórico, a supervisão pode confirmar a carteira. Os novos registros de um gerente são vinculados à própria carteira pelo servidor.
+
+As tabelas históricas preservam valores em cache, sem executar macros ou fórmulas arbitrárias do Excel. Os cálculos de metas, avaliações, mérito, fechamento e classificação foram implementados nos módulos próprios. O botão Solicitar melhoria mantém uma fila por aba para o desenvolvimento acrescentar regras específicas.
+
+Fontes iniciais: 72 clínicas do relatório Admin; 73 linhas de mérito (incluindo Paraguai); metas mensais de outubro/2026 transcritas do relatório enviado em imagem. Meta CG da equipe: R$ 16.790.224,78; efetivado R$ 6.991.390,85; meta orto 1.221 e pastas 381. As datas de atualização das fontes não estavam informadas; o recebimento não é apresentado como atualização oficial.
+
+## Segurança e arquitetura
+
+O navegador chama apenas endpoints do próprio servidor. Credenciais Supabase, credencial de conexão e chave privada VAPID ficam no ambiente do Render. O frontend não recebe chaves de infraestrutura, hashes de senha ou tokens de sessão em JSON ou armazenamento local.
+
+A sessão usa identificador opaco em cookie HttpOnly, Secure e SameSite=Strict, com validade de 8 horas. No banco fica somente o SHA-256 desse identificador. Bloquear um usuário revoga as sessões; trocar a senha exige a senha atual e também encerra as sessões. Há limitação de tentativas no servidor e no banco.
+
+O servidor valida origem das requisições que alteram dados, utiliza CSP sem scripts inline e serve somente arquivos públicos explicitamente listados. Dados da planilha e mensagens são tratados como texto, sem execução de HTML ou fórmulas. A exportação CSV neutraliza prefixos de fórmulas.
+
+A função Supabase mantém `verify_jwt=true`, exige a credencial interna e, adicionalmente, uma sessão aprovada para cada operação protegida. A própria função confere os perfis administrativos e a carteira de cada consulta/alteração, inclusive registros de abas. Não há operação genérica para consultar senhas ou criar sessões de outro usuário. Login e solicitação pendente são as únicas operações sem sessão.
+
+RLS está habilitado em todas as tabelas, sem permissões públicas para `anon` ou `authenticated`. O acesso privilegiado existe apenas dentro da função e é limitado pelas verificações por operação. Os avisos INFO de RLS sem políticas públicas são esperados: o modelo é negar o acesso público, sem autenticação direta pelo Data API.
+
+## Notificações
+
+A supervisão e o desenvolvimento enviam avisos para todos os aprovados ou um destinatário. O aviso é salvo na caixa de notificações. Quem optar por ativar as notificações no dispositivo poderá receber Web Push pelo service worker, sujeito à permissão, suporte e configurações do navegador/sistema. Fazer logout remove a inscrição deste dispositivo. Usuários bloqueados são excluídos dos envios push.
+
+A chave VAPID pública é fornecida ao navegador por exigência do protocolo; ela não é uma credencial secreta nem dá acesso aos dados. A chave privada fica no servidor.
+
+## Variáveis do Render
+
+- SUPABASE_EDGE_URL
+- SUPABASE_ANON_KEY (verificação JWT da plataforma, somente backend)
+- SUPABASE_BRIDGE_TOKEN (somente backend)
+- APP_ORIGIN
+- VAPID_PUBLIC_KEY
+- VAPID_PRIVATE_KEY (somente backend)
+- VAPID_SUBJECT
+- PORT, fornecida pelo Render
+
+O projeto Supabase é `mfigztzmdsjxqgawqfzx`, São Paulo. O antigo PostgreSQL gratuito no Render não é utilizado. Nenhuma senha de banco precisa ser inserida no navegador.
+
+## Desenvolvimento e verificação
+
+`npm ci --ignore-scripts` instala as versões do lockfile. `npm test` cobre hashes, cookies, cadastro sem autopromoção, operações administrativas, sessões bloqueadas, isolamento, falsificação de proprietário, classificações, totais e ausência de credenciais nos arquivos públicos. `npm run check` verifica a sintaxe.
+
+Também foram testados login, sessão aprovada e revogação na função real. Os arquivos `lib/access.mjs` e `supabase/functions/gestao-amanda-storage/access.mjs` devem permanecer idênticos. A definição do banco está no histórico de migrações do projeto Supabase; a função implantada está versionada em `supabase/functions/gestao-amanda-storage`.

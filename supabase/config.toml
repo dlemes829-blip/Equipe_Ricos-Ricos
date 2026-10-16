@@ -1,0 +1,2 @@
+[functions.gestao-amanda-storage]
+verify_jwt = true

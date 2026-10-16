@@ -2,19 +2,26 @@ services:
   - type: web
     name: gestao-equipe-amanda
     runtime: node
+    region: virginia
     plan: free
-    buildCommand: npm install --omit=dev
+    buildCommand: npm ci --omit=dev --ignore-scripts
     startCommand: npm start
     healthCheckPath: /health
+    autoDeployTrigger: commit
     envVars:
       - key: NODE_ENV
         value: production
-      - key: DATABASE_URL
-        fromDatabase:
-          name: gestao-amanda-db
-          property: connectionString
-databases:
-  - name: gestao-amanda-db
-    plan: free
-    databaseName: ricos
-    user: ricos
+      - key: APP_ORIGIN
+        value: https://gestao-equipe-amanda.onrender.com
+      - key: SUPABASE_EDGE_URL
+        value: https://mfigztzmdsjxqgawqfzx.supabase.co/functions/v1/gestao-amanda-storage
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_BRIDGE_TOKEN
+        sync: false
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        value: https://gestao-equipe-amanda.onrender.com
