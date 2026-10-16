@@ -23,7 +23,7 @@ export async function createCodec(secret){
  const search=await derive('blind-index',{name:'HMAC',hash:'SHA-256',length:256},['sign']);
  const blind=async(context,value)=>hex(await crypto.subtle.sign('HMAC',search,encoder.encode(context+'\0'+value)));
  async function seal(value,context,type){if(value===null||value===undefined)return value;const iv=crypto.getRandomValues(new Uint8Array(12));const data=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:encoder.encode(context),tagLength:128},encryption,encoder.encode(JSON.stringify(value)));const box={iv:b64(iv),data:b64(data)};return type==='json'?{$amanda:'aes-256-gcm:v1',...box}:'enc:v1:'+box.iv+':'+box.data}
- async function open(value,context,type){if(!isEncrypted(value,type))return value;const box=type==='json'?value:{iv:value.split(':')[2],data:value.split(':')[3]};const bytes=await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(box.iv),additionalData:encoder.encode(context),tagLength:128},encryption,unb64(box.data));return JSON.parse(decoder.decode(bytes))}
+ async function open(value,context,type){if(value===null||value===undefined||value==='')return value;if(!isEncrypted(value,type))throw Error('Unencrypted private field');const box=type==='json'?value:{iv:value.split(':')[2],data:value.split(':')[3]};const bytes=await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(box.iv),additionalData:encoder.encode(context),tagLength:128},encryption,unb64(box.data));return JSON.parse(decoder.decode(bytes))}
  async function encode(table,row){const out={...row};for(const [field,type]of Object.entries(protectedFields[table]||{})){if(!(field in row))continue;const v=row[field];if(isEncrypted(v,type))throw Error('Refusing encrypted input');if(lookups[table]?.[field])out[lookups[table][field]]=v==null?null:await blind(table+'.'+field,v);out[field]=await seal(v,table+'.'+field,type)}if(table==='amanda_login_attempts'&&'attempt_key'in out)out.attempt_key=await blind('login-attempt',out.attempt_key);return out}
  async function decode(table,row){const out={...row};for(const [field,type]of Object.entries(protectedFields[table]||{}))if(field in out)out[field]=await open(out[field],table+'.'+field,type);for(const k of Object.values(lookups[table]||{}))delete out[k];if(table==='amanda_sessions'&&out.user)out.user=await decode('amanda_users',out.user);return out}
  async function query(table,params){const out={...params};for(const [field,column]of Object.entries(lookups[table]||{})){if(out[field]!==undefined&&String(out[field]).startsWith('eq.')){out[column]='eq.'+await blind(table+'.'+field,String(out[field]).slice(3));delete out[field]}if(out.on_conflict===field)out.on_conflict=column}if(table==='amanda_login_attempts'&&String(out.attempt_key||'').startsWith('eq.'))out.attempt_key='eq.'+await blind('login-attempt',out.attempt_key.slice(3));return out}
@@ -32,8 +32,6 @@ export async function createCodec(secret){
 export function encryptedDatabase(raw,codec){return async(table,params={},method='GET',body)=>{
  const transformed=await codec.query(table,params);
  let rows=await raw(table,transformed,method,body?await codec.encode(table,body):undefined);
- // Temporary compatibility for unconverted usernames; never accepted as ciphertext input.
- if(table==='amanda_users'&&method==='GET'&&params.username&&!rows.length)rows=await raw(table,params,method);
  return Promise.all(rows.map(row=>codec.decode(table,row)));
 }}
 export async function migrateBatch(raw,codec,table,offset=0){

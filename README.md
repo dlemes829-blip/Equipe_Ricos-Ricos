@@ -72,7 +72,7 @@ O arquivo inicial `seed.enc.json` também é criptografado. A fonte local `seed.
 
 IDs, datas, situação e perfis de autorização são metadados operacionais mantidos para consultas e controles de acesso; as conexões usam HTTPS e o banco permanece sem acesso público. Os dados autorizados são descriptografados no servidor para exibição: esta arquitetura não promete criptografia ponta a ponta nem oculta os resultados de quem está autorizado a vê-los no navegador.
 
-Preserve a chave no gerenciador de segredos e no procedimento de recuperação da organização. Não a regenere em deploys. A alteração exige uma migração explícita com a chave antiga; perder a chave impede recuperar os dados. O formato é versionado para permitir evolução futura.
+Preserve a chave no gerenciador de segredos e no procedimento de recuperação da organização. Não a regenere em deploys. A alteração exige uma migração explícita com a chave antiga; perder a chave impede recuperar os dados. O formato é versionado para permitir evolução futura. Após a migração, leituras de conteúdo privado em texto simples falham de forma fechada; restrições do banco também impedem novas gravações sem criptografia.
 
 A migração administrativa `encryption_migrate` exige sessão aprovada de desenvolvedor, limita-se às tabelas permitidas, retorna somente contagens e usa condições de versão ao alterar dados existentes. Não concede acesso genérico ao banco.
 

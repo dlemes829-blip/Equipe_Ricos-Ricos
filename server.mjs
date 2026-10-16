@@ -36,9 +36,12 @@ const server=http.createServer(async(req,res)=>{
   if(path==='/api/auth/request'&&req.method==='POST'){
    limited(req,'signup',8);const b=await body(req,5000),username=String(b.username||'').trim().toLowerCase(),name=String(b.name||'').trim();assert(validUsername(username),'Use 3 a 40 letras minúsculas, números, ponto, hífen ou sublinhado no usuário.');assert(name.length>=3&&name.length<=120,'Informe seu nome.');assert(typeof b.password==='string'&&b.password.length>=8&&b.password.length<=128,'Use uma senha entre 8 e 128 caracteres.');assert(!b.manager||MANAGERS.includes(b.manager),'Gerente inválido.');await operation('user_register',{username,name,password_hash:hashPassword(b.password),requested_manager:b.manager||null,requested_role:b.role==='supervisor'?'supervisor':'manager'});return send(201,{ok:true,message:'Solicitação enviada. Aguarde a aprovação do desenvolvedor.'});
   }
+  if(path==='/api/auth/logout'&&req.method==='POST'){
+   try{const user=await userFor(req),b=await body(req,3000);if(b.endpoint)await op(user,'push_unsubscribe',{endpoint:b.endpoint});await op(user,'session_revoke');return send(200,{ok:true},{'Set-Cookie':clearCookie})}
+   catch(error){if(error.status===401)return send(200,{ok:true},{'Set-Cookie':clearCookie});return send(503,{error:'Você saiu deste navegador. Não foi possível confirmar a revogação remota.'},{'Set-Cookie':clearCookie})}
+  }
   const user=await userFor(req);
   if(path==='/api/auth/me'&&req.method==='GET')return send(200,{user:publicUser(user)});
-  if(path==='/api/auth/logout'&&req.method==='POST'){const b=await body(req,3000);if(b.endpoint)await op(user,'push_unsubscribe',{endpoint:b.endpoint});await op(user,'session_revoke');return send(200,{ok:true},{'Set-Cookie':clearCookie})}
   if(path==='/api/auth/password'&&req.method==='POST'){const b=await body(req,3000);assert(typeof b.password==='string'&&b.password.length>=8&&b.password.length<=128,'A nova senha deve ter de 8 a 128 caracteres.');await op(user,'password_update',{current_password:b.currentPassword,password_hash:hashPassword(b.password)});return send(200,{ok:true},{'Set-Cookie':clearCookie})}
   if(path==='/api/presence'&&req.method==='POST'){if(Date.now()-(touches.get(user.id)||0)>30000){await op(user,'touch');touches.set(user.id,Date.now())}return send(200,{ok:true,user:publicUser(user)})}
   if(path==='/api/seed'&&req.method==='GET')return send(200,ownSeed(user));
