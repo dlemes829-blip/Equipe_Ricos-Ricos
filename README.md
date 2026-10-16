@@ -10,7 +10,7 @@ Variável obrigatória: DATABASE_URL. Porta: PORT fornecida pelo Render. Comando
 
 ## Dados e limites desta versão
 
-- 792 unidades do relatório Admin, com supervisora, gerente, cadeiras e efetivações.
+- 72 unidades da supervisora Amanda no relatório Admin, com supervisora, gerente, cadeiras e efetivações.
 - Valores iniciais do relatório sem data confirmada; são identificados como base sem data.
 - Upload de relatório Admin em XLSX ou CSV, com prévia e confirmação.
 - Texto de avaliações reconhecido pelo código da unidade. Subtotais e linhas incompletas não são importados.
@@ -19,4 +19,4 @@ Variável obrigatória: DATABASE_URL. Porta: PORT fornecida pelo Render. Comando
 - Dados compartilhados no PostgreSQL, proteção contra sobrescrita simultânea e backup JSON.
 - O histórico antigo das demais abas, regras de classificação Bronze/Prata/Ouro e cálculos de bonificação ainda não foram migrados.
 - A leitura XLSX exige navegador moderno com DecompressionStream deflate-raw; CSV é a alternativa.
-- Verificação feita: sintaxe JavaScript. Validação visual e execução com banco ainda pendentes.
+- Verificação feita: sintaxe JavaScript. Testes de interpretação de avaliações, totais, linhas incompletas, duplicidade entre retratos e CSV concluídos. Execução com banco depende da variável DATABASE_URL.
