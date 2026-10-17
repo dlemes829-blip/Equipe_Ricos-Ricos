@@ -1,0 +1,9 @@
+import crypto from 'node:crypto';
+import dns from 'node:dns/promises';
+import net from 'node:net';
+export function authorized(value,secret){return typeof secret==='string'&&/^[a-f0-9]{64}$/.test(secret)&&typeof value==='string'&&value.length===64&&crypto.timingSafeEqual(Buffer.from(value),Buffer.from(secret))}
+export function publicIp(ip){if(net.isIP(ip)===4){const[a,b]=ip.split('.').map(Number);return !(a===0||a===10||a===127||a===169&&b===254||a===172&&b>=16&&b<=31||a===192&&[0,168].includes(b)||a===100&&b>=64&&b<=127||a>=224||a===198&&[18,19].includes(b))}if(net.isIP(ip)===6){const s=ip.toLowerCase();return !s.startsWith('::')&&!s.startsWith('fc')&&!s.startsWith('fd')&&!s.startsWith('fe8')&&!s.startsWith('fe9')&&!s.startsWith('fea')&&!s.startsWith('feb')&&s.startsWith('2')}return false}
+const cache=new Map();
+export async function safeNetworkUrl(value,lookup=dns.lookup){let u;try{u=new URL(value)}catch{throw Error('Endereço inválido.')}if(!['https:','wss:'].includes(u.protocol)||u.username||u.password||u.port&&u.port!=='443'||net.isIP(u.hostname.replace(/[\[\]]/g,''))||!u.hostname.includes('.')||/\.(local|internal|localhost)$/.test(u.hostname))throw Error('Use um domínio público HTTPS.');let entry=cache.get(u.hostname);if(!entry||entry.until<Date.now()){const records=await lookup(u.hostname,{all:true});if(!records.length||records.some(r=>!publicIp(r.address)))throw Error('Destino privado bloqueado.');entry={until:Date.now()+15000};cache.set(u.hostname,entry)}return u}
+export function expand(value,vars){return String(value||'').replace(/\{\{(date|monthStart|monthEnd|manager)\}\}/g,(_,key)=>String(vars[key]||''))}
+export const allowedKeys=new Set(['Enter','Tab','Shift+Tab','Backspace','Delete','Escape','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Home','End','PageUp','PageDown','Control+A','Control+C','Control+V','Control+X','Control+Z','Control+Y','Shift+ArrowLeft','Shift+ArrowRight','Space']);

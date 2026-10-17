@@ -1,3 +1,4 @@
+import {browserAgentOperation,browserUserOperation} from './browser-ops.mjs';
 import { scryptSync, timingSafeEqual } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { MANAGERS, assert, requireDev, requireSupervisor, isPrivileged } from './access.mjs';
@@ -5,6 +6,7 @@ const USER_PUBLIC='id,username,name,status,roles,manager,requested_manager,reque
 function verify(password,hash){const p=String(hash||'').split(':'),ok=p[0]==='scrypt'&&/^[a-f0-9]{32}$/.test(p[1]||'')&&/^[a-f0-9]{128}$/.test(p[2]||'');const salt=ok?p[1]:'0'.repeat(32),expected=Buffer.from(ok?p[2]:'0'.repeat(128),'hex'),actual=scryptSync(String(password),Buffer.from(salt,'hex'),64);return timingSafeEqual(actual,expected)&&ok}
 export async function sessionUser(hash,db){assert(typeof hash==='string'&&/^[a-f0-9]{64}$/.test(hash),'Sessão necessária.',401);const rows=await db('amanda_sessions',{token_hash:'eq.'+hash,expires_at:'gt.'+new Date().toISOString(),select:'user:amanda_users('+USER_PUBLIC+')',limit:1});assert(rows[0]?.user?.status==='approved','Sessão inválida ou acesso bloqueado.',401);const u=rows[0].user;assert(isPrivileged(u)||(u.roles.includes('manager')&&MANAGERS.includes(u.manager)),'Carteira não atribuída.',403);return u}
 export async function operations(action:string,input:any,db:any){
+ if(action.startsWith('browser_agent_'))return browserAgentOperation(action,input,db);
  const q=(table:string,params:any={},method='GET',body?:any)=>db(table,params,method,body);
  if(action==='login'){
   assert(typeof input.username==='string'&&/^[a-z0-9_.-]{3,40}$/.test(input.username)&&typeof input.password==='string'&&input.password.length<=200,'Usuário ou senha inválidos.',401);
@@ -23,6 +25,7 @@ export async function operations(action:string,input:any,db:any){
   await q('amanda_users',{},'POST',{username:input.username,name:input.name,password_hash:input.password_hash,requested_manager:input.requested_manager||null,requested_role:input.requested_role==='supervisor'?'supervisor':'manager'});return {ok:true};
  }
  const actor=await sessionUser(input.session_hash,db);
+ if(action.startsWith('browser_'))return browserUserOperation(action,input,actor,db);
  switch(action){
   case 'user_list':requireDev(actor);return q('amanda_users',{select:USER_PUBLIC,order:'created_at.desc',limit:500});
   case 'people_list':requireSupervisor(actor);return q('amanda_users',{status:'eq.approved',select:'id,name,username,manager',limit:500});

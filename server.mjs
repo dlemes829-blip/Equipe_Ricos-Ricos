@@ -1,3 +1,4 @@
+import {agentAuthenticated,browserRequest,wakeBrowser} from './lib/browser-gateway.mjs';
 import http from 'node:http';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
@@ -7,7 +8,7 @@ import {storage,operation} from './lib/storage.mjs';
 import {MANAGERS,assert,hashPassword,sha256,cookieValue,sessionCookie,clearCookie,publicUser,isDev,isPrivileged,requireDev,requireSupervisor,validUsername,validateState} from './lib/auth.mjs';
 const seedCodec=await createCodec(process.env.APP_DATA_ENCRYPTION_KEY);
 const seed=await seedCodec.open(JSON.parse(fs.readFileSync(new URL('./seed.enc.json',import.meta.url))),'backend.seed','json');
-const staticFiles=new Map([['/','index.html'],['/app.js','app.js'],['/style.css','style.css'],['/sw.js','sw.js'],['/icon.svg','icon.svg'],['/core.mjs','core.mjs']].map(([url,path])=>[url,{bytes:fs.readFileSync(new URL('./public/'+path,import.meta.url)),type:path.endsWith('.html')?'text/html; charset=utf-8':path.endsWith('.css')?'text/css; charset=utf-8':path.endsWith('.svg')?'image/svg+xml':'text/javascript; charset=utf-8'}]));
+const staticFiles=new Map([['/','index.html'],['/app.js','app.js'],['/style.css','style.css'],['/sw.js','sw.js'],['/icon.svg','icon.svg'],['/core.mjs','core.mjs'],['/browser-ui.js','browser-ui.js']].map(([url,path])=>[url,{bytes:fs.readFileSync(new URL('./public/'+path,import.meta.url)),type:path.endsWith('.html')?'text/html; charset=utf-8':path.endsWith('.css')?'text/css; charset=utf-8':path.endsWith('.svg')?'image/svg+xml':'text/javascript; charset=utf-8'}]));
 const origins=new Set([process.env.APP_ORIGIN,process.env.RENDER_EXTERNAL_URL].filter(Boolean));
 const secured={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','Cross-Origin-Resource-Policy':'same-origin','Permissions-Policy':'camera=(), microphone=(), geolocation=()','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'",'Strict-Transport-Security':'max-age=31536000'};
 const limits=new Map(),touches=new Map();
@@ -28,6 +29,16 @@ const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost'),path=url.pathname;
   if(path==='/health')return send(200,{ok:true});
   if(staticFiles.has(path)&&req.method==='GET'){const f=staticFiles.get(path);res.writeHead(200,{...secured,'Content-Type':f.type,...(path==='/sw.js'?{'Service-Worker-Allowed':'/'}:{})});return res.end(f.bytes)}
+  if(path.startsWith('/internal/browser/')){
+   assert(agentAuthenticated(req.headers['x-amanda-agent']),'Acesso não autorizado.',401);
+   const agent_token=process.env.BROWSER_AGENT_SECRET;
+   if(path==='/internal/browser/state'&&req.method==='GET')return send(200,await operation('browser_agent_state',{agent_token}));
+   if(path==='/internal/browser/profile'&&req.method==='POST'){const b=await body(req,4500000);return send(200,await operation('browser_agent_profile',{agent_token,profile:b.profile}))}
+   if(path==='/internal/browser/claim'&&req.method==='POST')return send(200,await operation('browser_agent_claim',{agent_token}));
+   if(path==='/internal/browser/progress'&&req.method==='POST'){const b=await body(req,5000);return send(200,await operation('browser_agent_progress',{...b,agent_token}))}
+   if(path==='/internal/browser/finish'&&req.method==='POST'){const b=await body(req,5500000);return send(200,await operation('browser_agent_finish',{...b,agent_token}))}
+   return send(404,{error:'Operação indisponível.'});
+  }
   csrf(req);
   if(path==='/api/auth/login'&&req.method==='POST'){
    limited(req,'login',18);const b=await body(req,4000),username=String(b.username||'').trim().toLowerCase();assert(validUsername(username)&&typeof b.password==='string'&&b.password.length<=200,'Usuário ou senha inválidos.',401);
@@ -41,6 +52,22 @@ const server=http.createServer(async(req,res)=>{
    catch(error){if(error.status===401)return send(200,{ok:true},{'Set-Cookie':clearCookie});return send(503,{error:'Você saiu deste navegador. Não foi possível confirmar a revogação remota.'},{'Set-Cookie':clearCookie})}
   }
   const user=await userFor(req);
+  if(path==='/api/reports/status'&&req.method==='GET')return send(200,await op(user,'browser_status'));
+  if(path==='/api/reports'&&req.method==='GET'){const rows=await op(user,'browser_job_list');if(rows.some(r=>r.status==='queued'))void wakeBrowser();return send(200,rows)}
+  if(path==='/api/reports'&&req.method==='POST'){limited(req,'reports:'+user.id,12);const b=await body(req,3000);const row=await op(user,'browser_job_create',{kind:b.kind,date:b.date,period:b.period,manager:isPrivileged(user)?b.manager:user.manager});void wakeBrowser();await audit(user,'browser_report_requested',row.id,{kind:b.kind});return send(202,row)}
+  if(path.startsWith('/api/admin/browser/')){
+   requireDev(user);
+   if(path==='/api/admin/browser/config'&&req.method==='GET')return send(200,await op(user,'browser_config_get'));
+   if(path==='/api/admin/browser/config'&&req.method==='PUT'){const b=await body(req,50000);const config=await op(user,'browser_config_set',{config:b});await audit(user,'browser_routes_updated',null);return send(200,config)}
+   if(path==='/api/admin/browser/status'&&req.method==='GET')return send(200,await browserRequest('/status'));
+   if(path==='/api/admin/browser/control'&&req.method==='POST'){limited(req,'browser:'+user.id,6000);const b=await body(req,20000);assert(['open','goto','back','forward','reload','click','text','key','wheel','release','close-tab','new-tab','switch-tab','copy','dialog','save','reset'].includes(b.action),'Comando inválido.');const result=await browserRequest('/control',{...b,actor:user.id});if(['open','release','reset'].includes(b.action))await audit(user,'browser_'+b.action,null);return send(200,result)}
+   if(path==='/api/admin/browser/frame'&&req.method==='GET'){const frame=await browserRequest('/frame',undefined,15000,true);res.writeHead(200,{...secured,'Content-Type':'image/jpeg'});return res.end(Buffer.from(await frame.arrayBuffer()))}
+   if(path==='/api/admin/browser/stream'&&req.method==='GET'){
+    res.writeHead(200,{...secured,'Content-Type':'multipart/x-mixed-replace; boundary=amandaframe','Connection':'keep-alive'});let closed=false;req.on('close',()=>{closed=true});const until=Date.now()+5*60000;let checked=Date.now();
+    while(!closed&&Date.now()<until){try{if(Date.now()-checked>10000){requireDev(await userFor(req));checked=Date.now()}const f=await browserRequest('/frame',undefined,10000,true),bytes=Buffer.from(await f.arrayBuffer());if(closed)break;res.write('--amandaframe\r\nContent-Type: image/jpeg\r\nContent-Length: '+bytes.length+'\r\n\r\n');res.write(bytes);res.write('\r\n')}catch{break}await new Promise(r=>setTimeout(r,1100))}res.end();return;
+   }
+   return send(404,{error:'Operação indisponível.'});
+  }
   if(path==='/api/auth/me'&&req.method==='GET')return send(200,{user:publicUser(user)});
   if(path==='/api/auth/password'&&req.method==='POST'){const b=await body(req,3000);assert(typeof b.password==='string'&&b.password.length>=8&&b.password.length<=128,'A nova senha deve ter de 8 a 128 caracteres.');await op(user,'password_update',{current_password:b.currentPassword,password_hash:hashPassword(b.password)});return send(200,{ok:true},{'Set-Cookie':clearCookie})}
   if(path==='/api/presence'&&req.method==='POST'){if(Date.now()-(touches.get(user.id)||0)>30000){await op(user,'touch');touches.set(user.id,Date.now())}return send(200,{ok:true,user:publicUser(user)})}

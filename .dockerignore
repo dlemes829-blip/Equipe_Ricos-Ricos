@@ -1,0 +1,14 @@
+.git
+**/node_modules
+.env
+.env.*
+*.log
+seed.json
+seed.enc.json
+tests
+upload
+dist
+.openai
+page.html
+features.js
+ux.js

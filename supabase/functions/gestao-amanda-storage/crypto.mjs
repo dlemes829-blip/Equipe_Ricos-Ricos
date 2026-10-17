@@ -1,6 +1,9 @@
 // Authenticated encryption; keys are supplied only by the trusted Node backend.
 const encoder=new TextEncoder(),decoder=new TextDecoder();
 export const protectedFields={
+ amanda_browser_vault:{payload:'json'},
+ amanda_browser_config:{payload:'json'},
+ amanda_report_jobs:{payload:'json'},
  gestao_amanda_state:{payload:'json'},
  amanda_users:{username:'text',name:'text',password_hash:'text',manager:'text',requested_manager:'text'},
  amanda_notifications:{title:'text',body:'text'},

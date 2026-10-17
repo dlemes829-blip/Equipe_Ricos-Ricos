@@ -21,9 +21,28 @@ services:
         sync: false
       - key: APP_DATA_ENCRYPTION_KEY
         sync: false
+      - key: BROWSER_AGENT_SECRET
+        sync: false
+      - key: BROWSER_AGENT_URL
+        sync: false
       - key: VAPID_PUBLIC_KEY
         sync: false
       - key: VAPID_PRIVATE_KEY
         sync: false
       - key: VAPID_SUBJECT
+        value: https://gestao-equipe-amanda.onrender.com
+
+  - type: web
+    name: gestao-amanda-chromium
+    runtime: docker
+    region: virginia
+    plan: free
+    dockerfilePath: ./browser-service/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: BROWSER_AGENT_SECRET
+        sync: false
+      - key: APP_CALLBACK_ORIGIN
         value: https://gestao-equipe-amanda.onrender.com

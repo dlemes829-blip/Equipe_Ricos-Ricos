@@ -81,3 +81,21 @@ Os avisos Web Push usam o protocolo criptografado do navegador e não incluem o 
 ## Interface v2.1
 
 Menus por assunto; rotina pessoal no painel; busca de abas com Ctrl/Cmd+K; busca por clínica mantendo o formulário; indicadores de rascunho; preservação dos demais rascunhos ao salvar uma clínica; filtros por contexto e atalhos Hoje/Ontem; menu lateral móvel; foco visível e opção de mostrar a senha.
+
+## Chromium privado e geração de relatórios (v2.2)
+
+O Admin possui uma Central Sisodonto com Chromium real no serviço separado `gestao-amanda-chromium`. A tela é transmitida pelo backend autenticado; cliques, teclado e navegação são encaminhados por comandos limitados. O navegador não disponibiliza CDP, WebSocket de depuração, cookies ou um endereço de controle ao cliente. O serviço recusa requisições sem sua credencial privada.
+
+`BROWSER_AGENT_SECRET` deve ter 32 bytes aleatórios em hexadecimal, iguais nos ambientes dos dois serviços. Sua impressão SHA256 deve corresponder a `AGENT_SHA256` na função. `BROWSER_AGENT_URL` existe somente no backend principal; `APP_CALLBACK_ORIGIN` aponta para a origem HTTPS principal no serviço Chromium. A credencial do navegador é independente das credenciais do banco e só permite as operações específicas de sessão e relatórios. O worker não recebe a chave mestra de criptografia nem chaves administrativas do Supabase.
+
+A sessão (cookies, localStorage/IndexedDB suportados e sessionStorage das origens permitidas) é persistida criptografada na tabela `amanda_browser_vault`. O perfil é restaurado após reinicializações. A senha deve ser digitada manualmente no navegador, nunca salva em passos de relatório. MFA ou confirmação de acesso continuam manuais. A sessão pode expirar conforme o Sisodonto; salvar o perfil não garante sua validade futura.
+
+A origem do Sisodonto é informada pelo desenvolvedor na barra de endereço. Redirecionamentos de nível superior ficam limitados às origens autorizadas. Requisições a IPs privados, metadados, esquemas locais e HTTP são bloqueadas, inclusive sub-recursos. O container executa com usuário não root, sem portas de depuração públicas. Somente os endpoints de saúde são públicos.
+
+As rotas são configuradas no Admin, com passos goto/click/fill/select/wait/download, seletores opcionais de iframe e extração de tabela, texto ou XLSX/CSV. As variáveis suportadas são {{date}}, {{monthStart}}, {{monthEnd}} e {{manager}}. As rotas começam desativadas: o domínio e os caminhos reais não foram fornecidos previamente, portanto é necessário entrar no Sisodonto e configurá-los antes de habilitar a geração. A interface comum permite apenas solicitar e acompanhar os relatórios.
+
+Os trabalhos são registrados em `amanda_report_jobs`, processados em fila e importados no servidor. O vínculo do solicitante é imposto no backend e revisto antes da importação. Leituras do portal podem abranger outras carteiras; somente unidades da carteira autorizada são persistidas ou devolvidas ao usuário. Capturas e dados brutos do portal não fazem parte da resposta comum. A importação usa versão otimista, identifica o job para evitar duplicação e preserva os demais dados.
+
+Enquanto o navegador estiver aberto no Admin, a fila aguarda a liberação da tela ou o fim da conexão. Use **Salvar sessão** e **Liberar para relatórios** depois de entrar. A instância gratuita pode suspender por inatividade e levar cerca de um minuto para iniciar; uma instância dedicada pode ser necessária conforme o consumo real de memória e o volume de execuções. Nenhum plano pago é habilitado por esta configuração.
+
+As três tabelas adicionais têm RLS e nenhum grant público; seus campos payload aceitam somente envelopes criptografados. As funções de agente validam uma credencial distinta e atuam somente nessas tabelas e na importação limitada do relatório, nunca como SQL ou comandos genéricos.
