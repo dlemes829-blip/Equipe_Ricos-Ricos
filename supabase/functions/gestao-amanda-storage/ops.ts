@@ -1,3 +1,4 @@
+import {evaluationOperation} from './evaluation-import.mjs';
 import {browserAgentOperation,browserUserOperation} from './browser-ops.mjs';
 import { scryptSync, timingSafeEqual } from 'node:crypto';
 import { Buffer } from 'node:buffer';
@@ -25,6 +26,7 @@ export async function operations(action:string,input:any,db:any){
   await q('amanda_users',{},'POST',{username:input.username,name:input.name,password_hash:input.password_hash,requested_manager:input.requested_manager||null,requested_role:input.requested_role==='supervisor'?'supervisor':'manager'});return {ok:true};
  }
  const actor=await sessionUser(input.session_hash,db);
+ if(action.startsWith('evaluation_'))return evaluationOperation(action,input,actor,db);
  if(action.startsWith('browser_'))return browserUserOperation(action,input,actor,db);
  switch(action){
   case 'user_list':requireDev(actor);return q('amanda_users',{select:USER_PUBLIC,order:'created_at.desc',limit:500});
