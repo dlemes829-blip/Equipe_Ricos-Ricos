@@ -8,10 +8,12 @@
   },
   "scripts": {
     "start": "node server.mjs",
-    "check": "node --check server.mjs && node --check public/app.js && node --check public/core.mjs && node --check public/browser-ui.js && node --check browser-service/server.mjs",
+    "check": "node --check server.mjs && node --check public/app.js && node --check public/core.mjs && node --check public/browser-ui.js && node --check browser-service/server.mjs && node --check public/evaluation-images.js && node --check public/ocr-layout.mjs && node --check public/dashboard.mjs",
     "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
+    "@tesseract.js-data/eng": "1.0.0",
+    "tesseract.js": "7.0.0",
     "web-push": "3.6.7"
   }
 }

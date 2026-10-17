@@ -1,0 +1,4 @@
+export const businessDay=(now=new Date())=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
+export function missingClosing(state,manager,today=businessDay()){return !!manager&&!state.daily.some(r=>r.manager===manager&&r.today===today)}
+export function dailySeries(overview,people,month){const days=new Map();for(const r of overview.daily.filter(r=>people.includes(r.manager)&&r.yesterday.startsWith(month))){let d=days.get(r.yesterday)||{date:r.yesterday,target:0,actual:0,ortho:0,count:0};d.target+=r.cgTarget;d.actual+=r.cgActual;d.ortho+=r.orthoActual;d.count++;days.set(r.yesterday,d)}return [...days.values()].sort((a,b)=>a.date.localeCompare(b.date))}
+export function workingDaysLeft(day){const [y,m]=day.split('-').map(Number);let count=0;for(let d=new Date(day+'T12:00:00Z');d.getUTCMonth()===m-1;d.setUTCDate(d.getUTCDate()+1)){if(d.getUTCDay()!==0)count++}return count}

@@ -46,7 +46,7 @@ export function parseEvaluations(input,units,options={}){
  const problem=(message,group,detail={})=>{issues.push(message);if(group)group.issues.push({message,...detail})};
  for(const item of source.items){
   if(item.footer){const m=item.footer.match(/de\s+(\d+)\s+registros/i);if(m&&context?.valid&&lastType==='unit'&&allowed.has(context.manager))groupFor(context.manager).expectedUnits=Number(m[1]);continue}
-  if(item.headerToken){if(['GERENTE','RESPONSAVEL'].includes(key(item.headerToken)))lastType='manager';else if(['FRANQUIA','UNIDADE','CLINICA'].includes(key(item.headerToken)))lastType='unit';continue}
+  if(item.headerToken){if(['GERENTE','RESPONSAVEL'].includes(key(item.headerToken)))lastType='manager';else if(['FRANQUIA','UNIDADE','CLINICA'].includes(key(item.headerToken)))lastType='unit';if(managerSequence>1)context=null;continue}
   let c;
   if(item.row){
    if(!Array.isArray(item.row)){if(typeof item.row==='object'&&item.row)c=objectRow(item.row);else continue}
@@ -61,17 +61,17 @@ export function parseEvaluations(input,units,options={}){
   if(managerCandidate){
    const manager=managerCandidate.name,valid=(!c.id||c.id===managerCandidate.id)&&nameKey(c.name)===nameKey(manager);context={manager,valid};managerSequence++;lastType='manager';if(!allowed.has(manager)){foreign++;continue}const g=groupFor(manager);
    if(!valid){problem('Gerente: código e nome não conferem com o cadastro.',g,{code:'manager_identity',line:c.line});continue}
-   const values=Object.fromEntries(fields.map(f=>[f,count(c.values[f])]));if(fields.some(f=>values[f]===null||Number.isNaN(values[f]))||values.total!==values.attended+values.cancelled+values.absent){problem('Resumo de '+manager+': quantidades ausentes ou total inconsistente.',g,{code:'summary_counts',line:c.line});continue}
+   const values=Object.fromEntries(fields.map(f=>[f,count(c.values[f])]));if(fields.some(f=>values[f]===null||Number.isNaN(values[f]))||values.total!==values.attended+values.cancelled+values.absent+(values.scheduled||0)){pending.push({id:managerCandidate.id,name:manager,manager,...values,key:c.key,line:c.line,missing:fields.filter(f=>values[f]===null||Number.isNaN(values[f])),badTotal:true,totalCalculated:false,reportedName:c.name,type:'manager'});problem('Resumo de '+manager+': quantidades ausentes ou total inconsistente.',g,{code:'summary_counts',line:c.line});continue}
    const summary={...values,id:managerCandidate.id,manager,reportedName:c.name,line:c.line};const old=seenSummaries.get(manager);if(old){if(fields.some(f=>old[f]!==summary[f]))problem('Há resumos diferentes para '+manager+'.',g,{code:'summary_conflict'});else duplicates++}else{seenSummaries.set(manager,summary);g.declared=summary}continue;
   }
-  let unit=c.id?byId.get(c.id):null;if(!c.id){const matches=units.filter(u=>nameKey(u.name)===nameKey(c.name));if(matches.length===1)unit=matches[0]}
+  if(managerSequence>1)context=null;let unit=c.id?byId.get(c.id):null;if(!c.id){const matches=units.filter(u=>nameKey(u.name)===nameKey(c.name));if(matches.length===1)unit=matches[0]}
   if(!unit){foreign++;if(context?.valid&&allowed.has(context.manager))problem('Há uma unidade não reconhecida no bloco de '+context.manager+'. Confira o código e o cadastro.',groupFor(context.manager),{code:'unknown_unit',line:c.line});if(options.showUnknown)problem('Unidade não reconhecida na carteira autorizada: '+(c.id||c.name),null);continue}
   if(!allowed.has(unit.manager)){foreign++;continue}const g=groupFor(unit.manager);lastType='unit';managerSequence=0;
   if(c.id&&bracket&&bracket[1]!==c.id||nameKey(c.name)!==nameKey(unit.name)){problem('Unidade #'+unit.id+': o nome informado não confere com '+unit.name+'.',g,{code:'unit_identity',line:c.line});continue}
   if(context&&(!context.valid||context.manager!==unit.manager)){problem('Unidade #'+unit.id+' pertence a '+unit.manager+', mas aparece no bloco de outro gerente.',g,{code:'unit_manager',line:c.line});continue}
   if(c.declaredManager&&nameKey(c.declaredManager)!==nameKey(unit.manager)){problem('Unidade #'+unit.id+': gerente informado diferente do cadastro.',g,{code:'unit_manager',line:c.line});continue}
-  const values=Object.fromEntries(fields.map(f=>[f,count(c.values[f])]));const derived=values.total===null&&['attended','cancelled','absent'].every(f=>values[f]!==null&&!Number.isNaN(values[f]));if(derived)values.total=values.attended+values.cancelled+values.absent;
-  const missing=fields.filter(f=>values[f]===null||Number.isNaN(values[f]));const badTotal=!missing.includes('total')&&['attended','cancelled','absent'].every(f=>!missing.includes(f))&&values.total!==values.attended+values.cancelled+values.absent;
+  const values=Object.fromEntries(fields.map(f=>[f,count(c.values[f])]));const derived=values.total===null&&['attended','cancelled','absent'].every(f=>values[f]!==null&&!Number.isNaN(values[f]));if(derived)values.total=values.attended+values.cancelled+values.absent+(values.scheduled||0);
+  const missing=fields.filter(f=>values[f]===null||Number.isNaN(values[f]));const badTotal=!missing.includes('total')&&['attended','cancelled','absent'].every(f=>!missing.includes(f))&&values.total!==values.attended+values.cancelled+values.absent+(values.scheduled||0);
   const record={id:unit.id,name:unit.name,manager:unit.manager,...values,key:c.key,line:c.line,totalCalculated:derived,missing,...(badTotal?{badTotal:true}:{}),reportedName:c.name};
   const prior=seenUnits.get(unit.id);if(prior){if(fields.some(f=>!Object.is(prior[f],record[f])))problem('Unidade #'+unit.id+' aparece com quantidades diferentes. Nenhuma das versões será importada.',g,{code:'duplicate_conflict'});else duplicates++;continue}seenUnits.set(unit.id,record);g.records.push(record);candidates.push(record);if(missing.length||badTotal)pending.push(record);
  }

@@ -30,6 +30,7 @@ export async function operations(action:string,input:any,db:any){
  if(action.startsWith('browser_'))return browserUserOperation(action,input,actor,db);
  switch(action){
   case 'user_list':requireDev(actor);return q('amanda_users',{select:USER_PUBLIC,order:'created_at.desc',limit:500});
+  case 'reporting_people':return q('amanda_users',{status:'eq.approved',...(!isPrivileged(actor)?{id:'eq.'+actor.id}:{}),select:'id,name,username,manager,roles',limit:500});
   case 'people_list':requireSupervisor(actor);return q('amanda_users',{status:'eq.approved',select:'id,name,username,manager',limit:500});
   case 'user_update':{
    requireDev(actor);assert(input.id!==actor.id||(input.status==='approved'&&input.roles?.includes('developer')),'Não é permitido bloquear ou remover seu próprio acesso de desenvolvedor.');
