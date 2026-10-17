@@ -32,7 +32,7 @@ export async function browserAgentOperation(action,input,db){
    const previous=s.history.find(h=>h.browserJob===j.id);if(previous){done=true;count=previous.count||0;break}
    const units=s.units.filter(u=>u.manager===j.payload.manager),parsed=parseBrowserReport(j.kind,input.result,units,j.payload.date,j.payload.period);count=parsed.rows.length;skipped=parsed.skipped;
    const key=j.kind==='chairs'?'chairs':'evals',existing=s[key].filter(r=>!parsed.rows.some(n=>n.id===r.id&&n.date===r.date&&(key==='chairs'||n.period===r.period)));
-   const importedRows=parsed.rows.map(r=>({...r,importId:j.id,capturedAt:now})),summaries=(parsed.summaries||[]).map(r=>({...r,importId:j.id,capturedAt:now}));
+   const importedRows=parsed.rows.map(r=>{const old=key==='chairs'?s.chairs.filter(p=>p.id===r.id&&p.date.startsWith(r.date.slice(0,7))&&p.date<=r.date).sort((a,b)=>b.date.localeCompare(a.date))[0]:null;return {...r,importId:j.id,capturedAt:now,...(old?{previous:{actual:old.actual,chairs:old.chairs,date:old.date,capturedAt:old.capturedAt||null}}:{})}}),summaries=(parsed.summaries||[]).map(r=>({...r,importId:j.id,capturedAt:now}));
    const payload={...s,[key]:existing.concat(importedRows),...(j.kind==='evaluations'?{evaluationSummaries:(s.evaluationSummaries||[]).filter(r=>!(r.manager===j.payload.manager&&r.date===j.payload.date&&r.period===j.payload.period)).concat(summaries)}:{}),history:s.history.concat({browserJob:j.id,created:now,createdBy:'browser-worker',manager:j.payload.manager,kind:'Sisodonto: '+j.kind,date:j.payload.date,count}).slice(-10000)};
    const saved=await db('gestao_amanda_state',{id:'eq.1',version:'eq.'+stored.version,select:'version'},'PATCH',{payload,version:crypto.randomUUID(),updated_at:now});if(saved.length){done=true;break}
   }
