@@ -1,0 +1,10 @@
+import {assert,isDev} from './access.mjs';
+export function requireUpdateOwner(actor){assert(isDev(actor)&&actor.username==='daniel','Comando exclusivo do desenvolvedor Daniel.',403)}
+export async function updateOperation(action,input,actor,db){
+ if(action==='update_status'){const row=(await db('amanda_app_release',{id:'eq.1',select:'payload',limit:1}))[0];return {release:row?.payload||null}}
+ if(action==='update_publish'){requireUpdateOwner(actor);assert(typeof input.version==='string'&&input.version.trim().length>0&&input.version.length<=40&&typeof input.message==='string'&&input.message.length<=500&&/^[a-f0-9]{16}$/.test(input.buildId||'')&&Number.isInteger(input.delay)&&input.delay>=10&&input.delay<=120,'Configuração de atualização inválida.');const payload={id:crypto.randomUUID(),version:input.version.trim(),message:input.message.trim(),buildId:input.buildId,issuedAt:Date.now(),delay:input.delay};await db('amanda_app_release',{on_conflict:'id'},'UPSERT',{id:1,payload});return payload}
+ if(action==='update_draft_get'){const row=(await db('amanda_update_drafts',{user_id:'eq.'+actor.id,select:'payload',limit:1}))[0];const payload=row?.payload;if(payload&&(Date.now()-payload.savedAt>=86400000||payload.scope!==JSON.stringify([actor.manager,[...actor.roles].sort()]))){await db('amanda_update_drafts',{user_id:'eq.'+actor.id},'DELETE');return null}return payload||null}
+ if(action==='update_draft_delete'){await db('amanda_update_drafts',{user_id:'eq.'+actor.id},'DELETE');return {ok:true}}
+ if(action==='update_draft_save'){const release=(await db('amanda_app_release',{id:'eq.1',select:'payload',limit:1}))[0]?.payload;assert(release&&input.releaseId===release.id,'Atualização não disponível.',409);assert(input.draft&&typeof input.draft==='object'&&JSON.stringify(input.draft).length<=300000,'Rascunho excede o limite permitido.');const payload={releaseId:release.id,savedAt:Date.now(),scope:JSON.stringify([actor.manager,[...actor.roles].sort()]),draft:input.draft};await db('amanda_update_drafts',{on_conflict:'user_id'},'UPSERT',{user_id:actor.id,payload});return {ok:true}}
+ assert(false,'Operação inválida.');
+}
